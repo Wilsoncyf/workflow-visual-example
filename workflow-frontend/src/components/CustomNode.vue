@@ -36,21 +36,16 @@ defineProps<{
 </script>
 
 <style scoped>
-.custom-node {
+.custom-node{
   position: relative;
-  display: inline-flex;              /* 宽度跟随内容 */
-  align-items: center;
+  display: inline-flex;
   width: fit-content;
-  min-width: 160px;
-  max-width: 420px;                  /* 控制别太长 */
   overflow: visible;
-  /* 句柄尺寸：可按需调整 */
-  --h: 12px; /* handle size */
 }
 
-/* 内部卡片样式 */
+/* 卡片本体 */
 .card{
-  position: relative;       /* 关键：句柄以卡片为定位容器 */
+  position: relative;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 14px;
@@ -58,18 +53,23 @@ defineProps<{
   box-shadow: 0 6px 18px rgba(2,6,23,.06);
 }
 
-/* 左侧类型色条 */
-.custom-node::before{
-  content: "";
-  position: absolute;
-  left: -2px; top: 10px; bottom: 10px;
-  width: 4px; border-radius: 3px;
-  background: #94a3b8; /* 默认占位色 */
+/* 左侧/右侧装饰条（可选视觉）*/
+.node-input  .card::before,
+.node-process .card::before,
+.node-delay  .card::before,
+.node-output .card::before{
+  content:"";
+  position:absolute;
+  left:-12px;                  /* 与卡片脱开一点 */
+  top:12px; bottom:12px;
+  width:4px;
+  border-radius:4px;
+  pointer-events:none;         /* 不抢事件 */
 }
-.node-input::before   { background:#16a34a; }
-.node-process::before { background:#2563eb; }
-.node-delay::before   { background:#f59e0b; }
-.node-output::before  { background:#dc2626; }
+.node-input  .card::before{ background:#16a34a; }
+.node-process .card::before{ background:#2563eb; }
+.node-delay  .card::before{ background:#f59e0b; }
+.node-output .card::before{ background:#dc2626; }
 
 /* 彩色胶囊 */
 .pill{
@@ -88,38 +88,43 @@ defineProps<{
 .pill-delay   { background: #f59e0b; }
 .pill-output  { background: #dc2626; }
 
-/* 句柄样式 */
+/* 句柄：基于 .card 定位，正好贴在白卡片的边缘 */
 .handle{
-  position: absolute;
-  z-index: 20;
-  pointer-events: all;
-  width: var(--h); height: var(--h);
-  border-radius: 50%;
-  background: #fff;
-  border: 2px solid #334155;
-  box-shadow: 0 1px 4px rgba(0,0,0,.15);
-  top: 50%;
-  transform: translateY(-50%);   /* 精准垂直居中 */
+  position:absolute;
+  z-index:20;
+  pointer-events:auto;
+  width:12px; height:12px;
+  border-radius:50%;
+  background:#fff;
+  border:2px solid #334155;
+  box-shadow:0 1px 4px rgba(0,0,0,.15);
+  transition: box-shadow .12s ease, transform .12s ease;
 }
 
-/* 命中区稍放大（不改变视觉） */
+/* 命中区扩大，不改变视觉 */
 .handle::after{
-  content: "";
-  position: absolute;
-  left: 50%; top: 50%;
-  width: calc(var(--h) + 14px);
-  height: calc(var(--h) + 14px);
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  pointer-events: auto;
+  content:"";
+  position:absolute;
+  left:50%; top:50%;
+  width:28px; height:28px;
+  transform:translate(-50%,-50%);
+  border-radius:50%;
 }
 
-/* 关键：把圆心压在"白边"上，但仍留在盒子内 1px，命中稳定 */
-.handle-in  { left:  calc(var(--h)/-2 + 1px); }   /* +1px 确保几何不越界 */
-.handle-out { right: calc(var(--h)/-2 + 1px); }  /* 圆心基本压在白边中线 */
+/* 关键：以 .card 的内外边界作为参照系来"贴边" */
+.handle-in{
+  left: calc(-6px);                      /* 小圆点一半在外，一半在里，视觉正贴边 */
+  top: 50%;
+  transform: translateY(-50%);
+}
+.handle-out{
+  right: calc(-6px);
+  top: 50%;
+  transform: translateY(-50%);
+}
 
 .handle:hover{
-  box-shadow: 0 0 10px rgba(99,102,241,.4);
-  border-color: #6366f1;
+  box-shadow: 0 0 10px rgba(99,102,241,.35);
+  border-color:#6366f1;
 }
 </style>

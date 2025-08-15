@@ -131,7 +131,7 @@
             @dragover.prevent
             @node-click="onNodeClick"
             @edge-click="onEdgeClick"
-            :connection-line-options="{ type: 'smoothstep', style: { strokeWidth: 2, stroke: '#10b981' } }"
+            :connection-line-options="{ type: 'smoothstep' as any, style: { strokeWidth: 2, stroke: '#10b981' } }"
             :default-edge-options="defaultEdgeOptions"
             :fit-view-on-init="true"
             :nodes-draggable="true"
@@ -147,7 +147,7 @@
           >
             <Background 
               pattern-color="#e1e5e9" 
-              :gap="20" 
+              :gap="20 as any" 
               variant="dots" 
             />
             <Controls 
@@ -158,7 +158,7 @@
             />
             <MiniMap 
               node-color="#4f46e5" 
-              node-border-radius="8" 
+              :node-border-radius="8" 
               position="bottom-right"
             />
           </VueFlow>
@@ -287,43 +287,59 @@ const nodePalette = [
   }
 ]
 
-const { addNodes, addEdges, project, fitView, zoomIn, zoomOut } = useVueFlow()
+const { addNodes, addEdges, project, fitView, zoomIn, zoomOut, getNodes } = useVueFlow()
 
 // 注册自定义节点类型
 const nodeTypes = {
-  custom: markRaw(CustomNode)
+  custom: markRaw(CustomNode as any)
 }
 
 // 默认边样式配置
 const defaultEdgeOptions = {
   type: 'smoothstep',
   animated: false,
-  /* 👉 许多场景下 vue-flow 支持把 smoothstep 的圆角放到 data 里 */
-  data: { borderRadius: 20, offset: 4 },
   markerEnd: {
     type: MarkerType.ArrowClosed,
-    width: 12,
-    height: 12,
-    color: '#6366f1'
+    width: 18,
+    height: 18,
+    color: '#4f46e5'
   },
   style: {
-    strokeWidth: 3,
-    strokeLinecap: 'round',  // 线端更圆
-    stroke: '#6366f1'
+    strokeWidth: 2.5,
+    stroke: '#4f46e5'   // 和句柄 hover 颜色一致
   }
 }
 
-const isValidConnection = (c: any) => c.sourceHandle === 'out' && c.targetHandle === 'in'
+const isValidConnection = (c:any) => {
+  // 句柄必须对、不能同向
+  if (c.sourceHandle !== 'out' || c.targetHandle !== 'in') return false
+
+  // 不允许自己连自己
+  if (c.source === c.target) return false
+
+  // 可选：禁止产生环（保持 DAG）
+  const createsCycle = edges.value.some(e =>
+    (e.source === c.target && e.target === c.source)
+  )
+  if (createsCycle) return false
+
+  // 可选：根据节点类型再限制
+  const src = nodes.value.find(n => n.id === c.source)
+  const dst = nodes.value.find(n => n.id === c.target)
+  if (!src || !dst) return false
+  if (src.data?.nodeType === 'output') return false
+  if (dst.data?.nodeType === 'input')  return false
+
+  return true
+}
 
 onMounted(async () => {
   loadWorkflows()
-  initDefaultFlow()
-  // 等待DOM更新后再适应视图
-  await nextTick()
-  fitView({ padding: 0.2 })
+  await initDefaultFlow()
+  await autoLayout()
 })
 
-const initDefaultFlow = () => {
+const initDefaultFlow = async () => {
   const initialNodes = [
     {
       id: '1',
@@ -373,22 +389,8 @@ const initDefaultFlow = () => {
     }
   ]
   
-  // 应用自动布局
-  const { nodes: layoutedNodes, edges: layoutedEdges } = applyDagreLayout(
-    initialNodes,
-    initialEdges,
-    {
-      rankdir: 'TB', // 上下布局
-      nodeSep: 40,   // 节点横向间距
-      rankSep: 80    // 节点纵向间距
-    }
-  )
-  
-  nodes.value = layoutedNodes
-  edges.value = layoutedEdges
-  nextTick().then(() => {
-    fitView({ padding: 0.2 })
-  })
+  nodes.value = initialNodes
+  edges.value = initialEdges
 }
 
 const loadWorkflows = async () => {
@@ -480,7 +482,7 @@ const saveWorkflow = async () => {
     await loadWorkflows()
     selectedWorkflowId.value = response.data.id
     ElMessage.success('工作流保存成功')
-  } catch (error) {
+  } catch (error: any) {
     console.error('Save workflow error:', error)
     ElMessage.error('保存工作流失败: ' + (error.response?.data?.message || error.message))
   }
@@ -659,14 +661,19 @@ const autoLayout = async () => {
     return
   }
   
+  await nextTick()                    // 等渲染
+  const sizeMap = Object.fromEntries(
+    getNodes.value.map(n => [n.id, {
+      width:  n.dimensions?.width  ?? 220,
+      height: n.dimensions?.height ?? 56,
+    }])
+  )
+  
   const { nodes: layoutedNodes, edges: layoutedEdges } = applyDagreLayout(
-    nodes.value,
+    nodes.value, 
     edges.value,
-    {
-      rankdir: 'TB', // 上下布局
-      nodeSep: 40,   // 节点横向间距
-      rankSep: 80    // 节点纵向间距
-    }
+    { rankdir: 'TB', nodeSep: 40, rankSep: 80 },
+    sizeMap
   )
   
   nodes.value = layoutedNodes
@@ -674,7 +681,7 @@ const autoLayout = async () => {
   
   // 使用nextTick等待DOM更新后再适应视图
   await nextTick()
-  fitView({ padding: 0.2 })
+  fitView({ padding: 0.24 })
   
   ElMessage.success('已自动布局')
 }

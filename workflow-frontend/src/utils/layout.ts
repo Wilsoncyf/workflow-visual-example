@@ -3,19 +3,20 @@ import dagre from 'dagre'
 import type { Edge, Node } from '@vue-flow/core'
 
 type Direction = 'TB' | 'BT' | 'LR' | 'RL'
-
 interface LayoutOpts {
   rankdir?: Direction
   nodeSep?: number
   rankSep?: number
 }
+type SizeMap = Record<string, { width:number; height:number }>
 
-const NODE_WIDTH = 280      // 320→280 更紧凑
-const NODE_HEIGHT = 56      // 64→56 视觉更轻
-
-export function applyDagreLayout(nodes: Node[], edges: Edge[], opts?: LayoutOpts) {
+export function applyDagreLayout(
+  nodes: Node[],
+  edges: Edge[],
+  opts?: LayoutOpts,
+  sizes?: SizeMap,                     // 新增
+){
   const g = new dagre.graphlib.Graph()
-  // 默认上下布局更像流程图
   g.setGraph({
     rankdir: opts?.rankdir ?? 'TB',
     nodesep: opts?.nodeSep ?? 40,
@@ -25,33 +26,20 @@ export function applyDagreLayout(nodes: Node[], edges: Edge[], opts?: LayoutOpts
   })
   g.setDefaultEdgeLabel(() => ({}))
 
-  // 添加节点到图
   nodes.forEach(n => {
-    g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
+    const w = sizes?.[n.id]?.width  ?? Math.max(160, (n as any).dimensions?.width  ?? 220)
+    const h = sizes?.[n.id]?.height ?? Math.max(48,  (n as any).dimensions?.height ?? 56)
+    g.setNode(n.id, { width: w, height: h })
   })
-  
-  // 添加边到图
-  edges.forEach(e => {
-    g.setEdge(e.source, e.target)
-  })
+  edges.forEach(e => g.setEdge(e.source, e.target))
 
-  // 执行布局算法
   dagre.layout(g)
 
-  // 应用布局结果到节点
   const laidNodes: Node[] = nodes.map(n => {
-    const nodeWithPosition = g.node(n.id)
-    return {
-      ...n,
-      // dagre 给的是中心点，vue-flow 用左上角坐标
-      position: { 
-        x: nodeWithPosition.x - NODE_WIDTH / 2, 
-        y: nodeWithPosition.y - NODE_HEIGHT / 2 
-      }
-    }
+    const p = g.node(n.id)
+    return { ...n, position: { x: p.x - (p.width/2), y: p.y - (p.height/2) } }
   })
 
-  // 返回布局后的节点和边
   return { nodes: laidNodes, edges }
 }
 
