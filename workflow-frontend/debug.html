@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>调试页面</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <h1>API 连接测试</h1>
+    <div id="output"></div>
+    
+    <script>
+        const API_BASE_URL = 'http://localhost:8080/api'
+        const output = document.getElementById('output')
+        
+        function log(message) {
+            output.innerHTML += `<p>${new Date().toLocaleTimeString()}: ${message}</p>`
+            console.log(message)
+        }
+        
+        async function testAPI() {
+            log('开始测试API连接...')
+            
+            try {
+                log('测试 GET /api/workflows')
+                const response = await axios.get(`${API_BASE_URL}/workflows`)
+                log(`✅ 成功! 响应: ${JSON.stringify(response.data)}`)
+                
+                // 测试创建工作流
+                log('测试 POST /api/workflows')
+                const createData = {
+                    name: '测试工作流',
+                    description: '调试用',
+                    nodes: [
+                        {
+                            id: '1',
+                            type: 'input',
+                            position: { x: 100, y: 100 },
+                            data: { label: '开始', nodeType: 'input' }
+                        }
+                    ],
+                    edges: [],
+                    metadata: {}
+                }
+                
+                const createResponse = await axios.post(`${API_BASE_URL}/workflows`, createData)
+                log(`✅ 创建成功! ID: ${createResponse.data.id}`)
+                
+                // 测试执行
+                log('测试 POST /api/workflows/{id}/execute')
+                const executeResponse = await axios.post(
+                    `${API_BASE_URL}/workflows/${createResponse.data.id}/execute`,
+                    { input: 'test data' }
+                )
+                log(`✅ 执行成功! 执行ID: ${executeResponse.data.id}`)
+                
+            } catch (error) {
+                log(`❌ 错误: ${error.message}`)
+                if (error.response) {
+                    log(`响应状态: ${error.response.status}`)
+                    log(`响应数据: ${JSON.stringify(error.response.data)}`)
+                }
+            }
+        }
+        
+        // 页面加载后自动测试
+        window.onload = testAPI
+        
+        // 添加按钮手动测试
+        const button = document.createElement('button')
+        button.textContent = '重新测试'
+        button.onclick = () => {
+            output.innerHTML = ''
+            testAPI()
+        }
+        document.body.appendChild(button)
+    </script>
+</body>
+</html>
