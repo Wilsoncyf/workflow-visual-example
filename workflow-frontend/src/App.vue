@@ -50,22 +50,48 @@
         <div class="sidebar-section">
           <div class="section-header">
             <el-icon><Cpu /></el-icon>
-            <span>节点组件</span>
+            <span>节点库</span>
           </div>
-          <div class="node-palette">
-            <div
-              v-for="node in nodePalette"
-              :key="node.type"
-              :class="['node-palette-item', `node-${node.type}`]"
-              draggable="true"
-              @dragstart="onDragStart($event, node)"
+          
+          <!-- 搜索框 -->
+          <div class="search-box">
+            <el-input
+              v-model="nodeSearchText"
+              placeholder="搜索节点..."
+              :prefix-icon="Search"
+              size="small"
+              clearable
+            />
+          </div>
+          
+          <!-- 分组节点库 -->
+          <div class="node-groups">
+            <div 
+              v-for="group in filteredNodeGroups" 
+              :key="group.name" 
+              class="node-group"
             >
-              <div class="node-icon">
-                <el-icon><component :is="node.icon" /></el-icon>
+              <div class="group-title">
+                <el-icon><component :is="group.icon" /></el-icon>
+                <span>{{ group.name }}</span>
+                <span class="node-count">({{ group.nodes.length }})</span>
               </div>
-              <div class="node-info">
-                <div class="node-name">{{ node.label }}</div>
-                <div class="node-desc">{{ node.description }}</div>
+              <div class="node-palette">
+                <div
+                  v-for="node in group.nodes"
+                  :key="node.type"
+                  :class="['node-palette-item', `node-${node.type}`]"
+                  draggable="true"
+                  @dragstart="onDragStart($event, node)"
+                >
+                  <div class="node-icon">
+                    <el-icon><component :is="node.icon" /></el-icon>
+                  </div>
+                  <div class="node-info">
+                    <div class="node-name">{{ node.label }}</div>
+                    <div class="node-desc">{{ node.description }}</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -220,7 +246,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, markRaw, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, markRaw, nextTick, computed } from 'vue'
 import { VueFlow, useVueFlow, ConnectionMode, MarkerType } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -244,7 +270,10 @@ import {
   ZoomIn,
   ZoomOut,
   Clock,
-  Grid
+  Grid,
+  Search,
+  Tools,
+  Switch
 } from '@element-plus/icons-vue'
 import axios from 'axios'
 import '@vue-flow/core/dist/style.css'
@@ -259,33 +288,77 @@ const workflows = ref<any[]>([])
 const currentWorkflow = ref<any>({ id: '', name: '', description: '' })
 const selectedNode = ref<any>(null)
 const lastExecution = ref<any>(null)
+const nodeSearchText = ref<string>('')
 
-const nodePalette = [
-  { 
-    type: 'input', 
-    label: '输入节点', 
-    description: '工作流的起始点',
-    icon: Connection 
+// 分组节点库（Dify风格）
+const nodeGroups = [
+  {
+    name: '基础',
+    icon: Connection,
+    nodes: [
+      { 
+        type: 'input', 
+        label: '开始', 
+        description: '工作流的起始点',
+        icon: Connection 
+      },
+      { 
+        type: 'output', 
+        label: '结束', 
+        description: '工作流的结束点',
+        icon: Finished 
+      }
+    ]
   },
-  { 
-    type: 'process', 
-    label: '处理节点', 
-    description: '执行数据处理逻辑',
-    icon: Cpu 
+  {
+    name: '处理',
+    icon: Cpu,
+    nodes: [
+      { 
+        type: 'process', 
+        label: '处理节点', 
+        description: '执行数据处理逻辑',
+        icon: Cpu 
+      },
+      { 
+        type: 'delay', 
+        label: '延迟节点', 
+        description: '模拟耗时操作',
+        icon: Clock 
+      }
+    ]
   },
-  { 
-    type: 'delay', 
-    label: '延迟节点', 
-    description: '模拟耗时操作',
-    icon: DataAnalysis 
+  {
+    name: '逻辑',
+    icon: Switch,
+    nodes: [
+      // TODO: 后续扩展条件分支、循环等
+    ]
   },
-  { 
-    type: 'output', 
-    label: '输出节点', 
-    description: '工作流的结束点',
-    icon: Finished 
+  {
+    name: '工具',
+    icon: Tools,
+    nodes: [
+      // TODO: 后续扩展HTTP请求、文件操作等
+    ]
   }
 ]
+
+// 搜索过滤
+const filteredNodeGroups = computed(() => {
+  if (!nodeSearchText.value.trim()) {
+    return nodeGroups.filter(group => group.nodes.length > 0)
+  }
+  
+  const searchTerm = nodeSearchText.value.toLowerCase()
+  return nodeGroups.map(group => ({
+    ...group,
+    nodes: group.nodes.filter(node => 
+      node.label.toLowerCase().includes(searchTerm) ||
+      node.description.toLowerCase().includes(searchTerm)
+    )
+  })).filter(group => group.nodes.length > 0)
+})
 
 const { addNodes, addEdges, project, fitView, zoomIn, zoomOut, getNodes } = useVueFlow()
 
@@ -333,10 +406,84 @@ const isValidConnection = (c:any) => {
   return true
 }
 
+// 键盘快捷键处理
+const handleKeyDown = (event: KeyboardEvent) => {
+  const isCtrlOrCmd = event.ctrlKey || event.metaKey
+  
+  // 防止在输入框中触发快捷键
+  const target = event.target as HTMLElement
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true') {
+    return
+  }
+  
+  switch (event.key.toLowerCase()) {
+    case 'delete':
+    case 'backspace':
+      event.preventDefault()
+      deleteSelectedItems()
+      break
+    case 'a':
+      if (isCtrlOrCmd) {
+        event.preventDefault()
+        autoLayout()
+      }
+      break
+    case 'f':
+      if (isCtrlOrCmd) {
+        event.preventDefault()
+        fitView({ padding: 0.24 })
+      }
+      break
+    case 's':
+      if (isCtrlOrCmd) {
+        event.preventDefault()
+        saveWorkflow()
+      }
+      break
+  }
+}
+
+// 删除选中的节点和边
+const deleteSelectedItems = () => {
+  const selectedNodes = nodes.value.filter(node => node.selected)
+  const selectedEdges = edges.value.filter(edge => edge.selected)
+  
+  if (selectedNodes.length === 0 && selectedEdges.length === 0) {
+    return
+  }
+  
+  // 删除选中的节点（会自动删除相关边）
+  if (selectedNodes.length > 0) {
+    const nodeIdsToDelete = selectedNodes.map(node => node.id)
+    nodes.value = nodes.value.filter(node => !nodeIdsToDelete.includes(node.id))
+    // 删除与这些节点相关的所有边
+    edges.value = edges.value.filter(edge => 
+      !nodeIdsToDelete.includes(edge.source) && !nodeIdsToDelete.includes(edge.target)
+    )
+  }
+  
+  // 删除选中的边
+  if (selectedEdges.length > 0) {
+    const edgeIdsToDelete = selectedEdges.map(edge => edge.id)
+    edges.value = edges.value.filter(edge => !edgeIdsToDelete.includes(edge.id))
+  }
+  
+  selectedNode.value = null
+  ElMessage.success(`已删除 ${selectedNodes.length} 个节点和 ${selectedEdges.length} 条连线`)
+}
+
 onMounted(async () => {
   loadWorkflows()
   await initDefaultFlow()
   await autoLayout()
+  
+  // 添加键盘事件监听
+  document.addEventListener('keydown', handleKeyDown)
+})
+
+// 组件卸载时清理事件监听
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeyDown)
 })
 
 const initDefaultFlow = async () => {
@@ -438,8 +585,89 @@ const loadWorkflow = async () => {
   }
 }
 
+// 工作流保存校验
+const validateWorkflow = () => {
+  const errors: string[] = []
+  
+  // 检查是否有节点
+  if (nodes.value.length === 0) {
+    errors.push('工作流必须至少包含一个节点')
+    return { isValid: false, errors }
+  }
+  
+  // 检查是否恰好有1个input节点
+  const inputNodes = nodes.value.filter(n => n.data.nodeType === 'input')
+  if (inputNodes.length === 0) {
+    errors.push('工作流必须有一个开始节点')
+  } else if (inputNodes.length > 1) {
+    errors.push('工作流只能有一个开始节点')
+  }
+  
+  // 检查是否至少有1个output节点
+  const outputNodes = nodes.value.filter(n => n.data.nodeType === 'output')
+  if (outputNodes.length === 0) {
+    errors.push('工作流必须至少有一个结束节点')
+  }
+  
+  // 检查连通性：除input外，所有节点至少有入边；除output外，所有节点至少有出边
+  for (const node of nodes.value) {
+    if (node.data.nodeType !== 'input') {
+      const hasInEdge = edges.value.some(e => e.target === node.id)
+      if (!hasInEdge) {
+        errors.push(`节点"${node.data.label}"缺少输入连接`)
+      }
+    }
+    
+    if (node.data.nodeType !== 'output') {
+      const hasOutEdge = edges.value.some(e => e.source === node.id)
+      if (!hasOutEdge) {
+        errors.push(`节点"${node.data.label}"缺少输出连接`)
+      }
+    }
+  }
+  
+  // 检查图连通性：从input可达所有非孤立节点
+  if (inputNodes.length === 1) {
+    const reachableNodes = new Set<string>()
+    const queue = [inputNodes[0].id]
+    
+    while (queue.length > 0) {
+      const currentId = queue.shift()!
+      if (reachableNodes.has(currentId)) continue
+      
+      reachableNodes.add(currentId)
+      
+      // 找到所有从当前节点出发的边
+      const outEdges = edges.value.filter(e => e.source === currentId)
+      for (const edge of outEdges) {
+        if (!reachableNodes.has(edge.target)) {
+          queue.push(edge.target)
+        }
+      }
+    }
+    
+    // 检查是否所有节点都可达
+    const unreachableNodes = nodes.value.filter(n => !reachableNodes.has(n.id))
+    if (unreachableNodes.length > 0) {
+      errors.push(`以下节点无法从开始节点到达: ${unreachableNodes.map(n => n.data.label).join(', ')}`)
+    }
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors
+  }
+}
+
 const saveWorkflow = async () => {
   try {
+    // 先进行工作流校验
+    const validation = validateWorkflow()
+    if (!validation.isValid) {
+      ElMessage.error(`工作流校验失败：\n${validation.errors.join('\n')}`)
+      return
+    }
+    
     let name = currentWorkflow.value.name
     
     if (!name) {
@@ -494,6 +722,13 @@ const executeWorkflow = async () => {
     return
   }
   
+  // 执行前先校验工作流
+  const validation = validateWorkflow()
+  if (!validation.isValid) {
+    ElMessage.error(`工作流校验失败：\n${validation.errors.join('\n')}`)
+    return
+  }
+  
   try {
     const inputs = { input: 'test data', timestamp: Date.now() }
     const response = await axios.post(
@@ -504,23 +739,35 @@ const executeWorkflow = async () => {
     lastExecution.value = response.data
     ElMessage.success('工作流执行已启动')
     
-    // 轮询检查执行状态
+    // 轮询检查执行状态（最多5分钟）
+    let pollCount = 0
+    const maxPolls = 150 // 5分钟 = 300秒 / 2秒间隔
+    
     const checkStatus = setInterval(async () => {
       try {
+        pollCount++
+        
+        if (pollCount > maxPolls) {
+          ElMessage.warning('执行状态检查超时，请手动刷新查看结果')
+          clearInterval(checkStatus)
+          return
+        }
+        
         const statusResponse = await axios.get(
           `${API_BASE_URL}/workflows/executions/${response.data.id}`
         )
         lastExecution.value = statusResponse.data
         
         if (statusResponse.data.status === 'completed') {
-          ElMessage.success('工作流执行完成')
+          ElMessage.success(`工作流执行完成 (用时: ${statusResponse.data.duration || '未知'}ms)`)
           clearInterval(checkStatus)
         } else if (statusResponse.data.status === 'failed') {
-          ElMessage.error('工作流执行失败: ' + statusResponse.data.errorMessage)
+          ElMessage.error('工作流执行失败: ' + (statusResponse.data.errorMessage || '未知错误'))
           clearInterval(checkStatus)
         }
       } catch (error) {
         console.error('Failed to check status:', error)
+        ElMessage.warning('执行状态检查失败，停止轮询')
         clearInterval(checkStatus)
       }
     }, 2000)
@@ -790,30 +1037,70 @@ const autoLayout = async () => {
   margin-bottom: 12px;
 }
 
+/* 搜索框样式 */
+.search-box {
+  padding: 0 12px 12px;
+}
+
+/* 节点组样式 */
+.node-groups {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.node-group {
+  margin-bottom: 16px;
+}
+
+.group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #f3f4f6;
+  margin-bottom: 8px;
+}
+
+.node-count {
+  margin-left: auto;
+  font-size: 10px;
+  color: #9ca3af;
+}
+
 .node-palette {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 300px;
-  overflow-y: auto;
+  gap: 6px;
+  padding: 0 12px;
 }
 
 .node-palette-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
-  background: #f9fafb;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  cursor: move;
-  transition: all 0.2s ease;
+  border-radius: 6px;
+  cursor: grab;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 
 .node-palette-item:hover {
-  background: #f3f4f6;
-  border-color: #d1d5db;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border-color: #3b82f6;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.12);
+  transform: translateY(-1px);
+}
+
+.node-palette-item:active {
+  transform: translateY(0);
+  cursor: grabbing;
 }
 
 .node-input {
